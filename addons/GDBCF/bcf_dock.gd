@@ -59,6 +59,10 @@ var _vp_camera_opt: OptionButton
 var _vp_components_box: VBoxContainer
 var _btn_delete_vp: Button
 
+# Debug panel
+var _debug_panel: PanelContainer
+var _debug_log: RichTextLabel
+
 # ── Lifecycle ──────────────────────────────────────────────────────────────────
 
 func _init() -> void:
@@ -112,6 +116,14 @@ func _build_ui() -> void:
 	_lbl_file.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 	toolbar.add_child(_lbl_file)
 
+	toolbar.add_child(VSeparator.new())
+	var btn_dbg := Button.new()
+	btn_dbg.text = "DBG"
+	btn_dbg.tooltip_text = "Toggle debug log"
+	btn_dbg.toggle_mode = true
+	btn_dbg.toggled.connect(_on_debug_toggled)
+	toolbar.add_child(btn_dbg)
+
 	# ── Topics section ────────────────────────────────────────────────────────
 	var topics_header := HBoxContainer.new()
 	root.add_child(topics_header)
@@ -158,6 +170,7 @@ func _build_ui() -> void:
 	_build_viewpoints_tab()
 
 	_set_details_enabled(false)
+	_build_debug_panel(root)
 
 # ── Details tab ────────────────────────────────────────────────────────────────
 
@@ -580,6 +593,7 @@ func _on_open_file_selected(path: String) -> void:
 	_current_path = path
 	_lbl_file.text = path.get_file()
 	_lbl_file.tooltip_text = path
+	_dbg("Opening: " + path)
 	_manager.load_bcf(path)
 
 func _on_new_pressed() -> void:
@@ -605,6 +619,7 @@ func _on_new_pressed() -> void:
 		_lbl_file.text = "(unsaved)"
 		_btn_save.disabled = true
 		_dirty = true
+		_dbg("Created project: \"" + project_name + "\"", "ok")
 		_populate_extension_options()
 		_populate_topics()
 		_set_details_enabled(false)
@@ -632,6 +647,7 @@ func _on_save_as_pressed() -> void:
 		_lbl_file.text = path.get_file()
 		_lbl_file.tooltip_text = path
 		_btn_save.disabled = false
+		_dbg("Saving to: " + path)
 		_manager.save_bcf(_project, path)
 	)
 	add_child(dlg)
@@ -657,6 +673,7 @@ func _on_add_topic_pressed() -> void:
 
 	var topic: BCFTopic = _manager.create_topic(type, status, "New Topic", "")
 	_project.topics.append(topic)
+	_dbg("Added topic \"%s\" [%s/%s]" % [topic.title, type, status], "ok")
 	_dirty = true
 	_populate_topics()
 	# Select the new item in the tree
@@ -672,6 +689,7 @@ func _on_delete_topic_pressed() -> void:
 		return
 	var idx := _project.topics.find(_selected_topic)
 	if idx >= 0:
+		_dbg("Deleted topic \"%s\"" % _selected_topic.title, "warn")
 		_project.topics.remove_at(idx)
 		_selected_topic = null
 		_dirty = true
@@ -694,6 +712,7 @@ func _on_apply_topic_pressed() -> void:
 	if _fld_priority.selected >= 0:
 		_selected_topic.priority = _fld_priority.get_item_text(_fld_priority.selected)
 
+	_dbg("Applied topic \"%s\" [%s/%s]" % [_selected_topic.title, _selected_topic.topic_type, _selected_topic.topic_status], "ok")
 	_dirty = true
 	_populate_topics()
 
@@ -712,6 +731,7 @@ func _on_add_comment_pressed() -> void:
 
 	_selected_topic.comments.append(comment)
 	_fld_comment_text.text = ""
+	_dbg("Added comment to \"%s\" by %s" % [_selected_topic.title, comment.author], "ok")
 	_dirty = true
 	_populate_comments(_selected_topic)
 
@@ -731,6 +751,7 @@ func _on_add_viewpoint_pressed() -> void:
 	vis.components = comps
 	vp.visualization_info = vis
 	_selected_topic.viewpoints.append(vp)
+	_dbg("Added viewpoint %s to topic \"%s\"" % [vp.guid.left(8), _selected_topic.title], "ok")
 	_dirty = true
 	_populate_viewpoints(_selected_topic)
 	_select_viewpoint(vp)
@@ -739,6 +760,7 @@ func _on_add_viewpoint_pressed() -> void:
 func _on_delete_viewpoint_pressed() -> void:
 	if _selected_viewpoint == null or _selected_topic == null:
 		return
+	_dbg("Deleted viewpoint %s" % _selected_viewpoint.guid.left(8), "warn")
 	_selected_topic.viewpoints.erase(_selected_viewpoint)
 	_selected_viewpoint = null
 	_btn_delete_vp.disabled = true
@@ -754,19 +776,23 @@ func _on_vp_camera_type_changed(index: int) -> void:
 	if vis == null:
 		return
 	vis.camera_type = _vp_camera_opt.get_item_id(index)
+	_dbg("Viewpoint camera type → %s" % _vp_camera_opt.get_item_text(index))
 	_dirty = true
 	_populate_viewpoints(_selected_topic)
 
 
 func _on_capture_camera_pressed() -> void:
 	if _selected_viewpoint == null:
+		_dbg("Capture camera: no viewpoint selected", "warn")
 		return
 	var subvp: SubViewport = EditorInterface.get_editor_viewport_3d(0)
 	if subvp == null:
+		_dbg("Capture camera: get_editor_viewport_3d(0) returned null", "err")
 		_show_error("No 3D editor viewport found.")
 		return
 	var cam: Camera3D = subvp.get_camera_3d()
 	if cam == null:
+		_dbg("Capture camera: get_camera_3d() returned null (open a 3D scene first)", "err")
 		_show_error("No active Camera3D in the 3D editor viewport.")
 		return
 
@@ -801,12 +827,15 @@ func _on_capture_camera_pressed() -> void:
 		vis.orthogonal_camera.aspect_ratio        = aspect
 
 	_dirty = true
+	var cam_type_name := "orthogonal" if cam.projection != Camera3D.PROJECTION_PERSPECTIVE else "perspective"
+	_dbg("Captured %s camera pos=%s fov=%.1f aspect=%.2f" % [cam_type_name, str(pos), cam.fov, aspect], "ok")
 	_populate_viewpoints(_selected_topic)
 	_load_viewpoint_into_panel(_selected_viewpoint)
 
 
 func _on_add_scene_selection_pressed() -> void:
 	if _selected_viewpoint == null:
+		_dbg("Add scene selection: no viewpoint selected", "warn")
 		return
 	var vis: BCFVisualizationInfo = _selected_viewpoint.visualization_info
 	if vis == null:
@@ -817,17 +846,14 @@ func _on_add_scene_selection_pressed() -> void:
 		vis.components = BCFComponents.new()
 
 	var nodes := EditorInterface.get_selection().get_selected_nodes()
+	_dbg("Scene selection: %d node(s) selected" % nodes.size())
 	var added := 0
+	var skipped_no_guid := 0
+	var skipped_duplicate := 0
 	for node: Node in nodes:
-		var ifc_guid_val: Variant = null
-		if node.has_method("get_ifc_guid"):
-			ifc_guid_val = node.get_ifc_guid()
-		elif "ifc_guid" in node:
-			ifc_guid_val = node.get("ifc_guid")
-		if ifc_guid_val == null:
-			continue
-		var guid_str := str(ifc_guid_val)
+		var guid_str := _resolve_ifc_guid(node)
 		if guid_str.is_empty():
+			skipped_no_guid += 1
 			continue
 		# Skip duplicates
 		var skip := false
@@ -836,6 +862,7 @@ func _on_add_scene_selection_pressed() -> void:
 				skip = true
 				break
 		if skip:
+			skipped_duplicate += 1
 			continue
 		var comp := BCFComponent.new()
 		comp.ifc_guid = guid_str
@@ -843,10 +870,67 @@ func _on_add_scene_selection_pressed() -> void:
 		vis.components.selection.append(comp)
 		added += 1
 
+	_dbg("Scene selection result: +%d added, %d no-guid, %d duplicate" % [added, skipped_no_guid, skipped_duplicate],
+			"ok" if added > 0 else "warn")
 	if added > 0:
 		_dirty = true
 		_refresh_vp_components_list()
 		_populate_viewpoints(_selected_topic)
+
+
+# Try every known GDIFC path to extract the IFC GlobalId from a node.
+# Returns an empty string when nothing is found.
+func _resolve_ifc_guid(node: Node) -> String:
+	# ── Path 1: explicit getter (custom bridge or GDIFC future API)
+	if node.has_method("get_ifc_guid"):
+		var v: Variant = node.get_ifc_guid()
+		if v != null and str(v) != "":
+			_dbg("  %s → guid via get_ifc_guid(): %s" % [node.name, str(v)])
+			return str(v)
+
+	# ── Path 2: direct ifc_guid property
+	if "ifc_guid" in node:
+		var v: Variant = node.get("ifc_guid")
+		if v != null and str(v) != "":
+			_dbg("  %s → guid via .ifc_guid: %s" % [node.name, str(v)])
+			return str(v)
+
+	# ── Path 3: IFCNode → ifc_object.get_attribute("GlobalId")  (main GDIFC path)
+	if "ifc_object" in node:
+		var obj: Variant = node.get("ifc_object")
+		if obj != null:
+			if obj.has_method("get_attribute"):
+				var v: Variant = obj.get_attribute("GlobalId")
+				if v != null and str(v) != "":
+					_dbg("  %s → guid via ifc_object.get_attribute(GlobalId): %s" % [node.name, str(v)])
+					return str(v)
+				_dbg("  %s: ifc_object.get_attribute(\"GlobalId\") returned null/empty" % node.name, "warn")
+			else:
+				_dbg("  %s: ifc_object has no get_attribute method (type=%s)" % [node.name, typeof(obj)], "warn")
+		else:
+			_dbg("  %s: ifc_object property is null" % node.name, "warn")
+
+	# ── Path 4: IFCNode → attributes Dictionary
+	if "attributes" in node:
+		var attrs: Variant = node.get("attributes")
+		if attrs is Dictionary:
+			var v: Variant = attrs.get("GlobalId", null)
+			if v != null and str(v) != "":
+				_dbg("  %s → guid via .attributes[GlobalId]: %s" % [node.name, str(v)])
+				return str(v)
+			_dbg("  %s: attributes dict has no GlobalId key. Keys: %s" % [node.name, str(attrs.keys().slice(0, 8))], "warn")
+
+	# ── Nothing found — log what properties/methods were actually present
+	var present: Array[String] = []
+	for prop in ["ifc_guid", "ifc_object", "attributes", "ifc_class", "properties"]:
+		if prop in node:
+			present.append(prop)
+	for meth in ["get_ifc_guid", "get_attribute", "get_all_attributes"]:
+		if node.has_method(meth):
+			present.append(meth + "()")
+	_dbg("  %s (%s): no IFC GUID found. Present IFC keys: [%s]" % [
+			node.name, node.get_class(), ", ".join(present)], "warn")
+	return ""
 
 
 func _on_clear_vp_selection_pressed() -> void:
@@ -855,7 +939,9 @@ func _on_clear_vp_selection_pressed() -> void:
 	var vis: BCFVisualizationInfo = _selected_viewpoint.visualization_info
 	if vis == null or vis.components == null:
 		return
+	var n: int = vis.components.selection.size()
 	vis.components.selection.clear()
+	_dbg("Cleared %d components from viewpoint %s" % [n, _selected_viewpoint.guid.left(8)], "warn")
 	_dirty = true
 	_refresh_vp_components_list()
 	_populate_viewpoints(_selected_topic)
@@ -869,14 +955,21 @@ func _on_bcf_loaded(project: BCFProject) -> void:
 	_selected_topic = null
 	_selected_viewpoint = null
 	_btn_save.disabled = false
+	var pi_name := ""
+	if project.project_info:
+		pi_name = project.project_info.name
+	_dbg("Loaded \"%s\"  topics:%d  docs:%d  path:%s" % [
+			pi_name, project.topics.size(), project.documents.size(), _current_path.get_file()], "ok")
 	_populate_extension_options()
 	_populate_topics()
 	_set_details_enabled(false)
 
 func _on_bcf_saved() -> void:
 	_dirty = false
+	_dbg("Saved → " + _current_path.get_file(), "ok")
 
 func _on_error(message: String) -> void:
+	_dbg("Error: " + message, "err")
 	_show_error(message)
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
@@ -888,6 +981,112 @@ func _show_error(message: String) -> void:
 	dlg.confirmed.connect(dlg.queue_free)
 	add_child(dlg)
 	dlg.popup_centered()
+
+# ── Debug panel ───────────────────────────────────────────────────────────────
+
+func _build_debug_panel(root: VBoxContainer) -> void:
+	_debug_panel = PanelContainer.new()
+	_debug_panel.visible = false
+	_debug_panel.custom_minimum_size = Vector2(0, 160)
+	_debug_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(_debug_panel)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	_debug_panel.add_child(vb)
+
+	var header := HBoxContainer.new()
+	var hdr_lbl := Label.new()
+	hdr_lbl.text = "Debug Log"
+	hdr_lbl.add_theme_font_size_override("font_size", 11)
+	hdr_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(hdr_lbl)
+
+	var btn_dump := _make_button("Dump", _on_dump_state_pressed)
+	btn_dump.tooltip_text = "Print current project / topic / viewpoint state"
+	header.add_child(btn_dump)
+
+	var btn_copy := _make_button("Copy", _on_copy_log_pressed)
+	btn_copy.tooltip_text = "Copy log text to clipboard"
+	header.add_child(btn_copy)
+
+	var btn_clear := _make_button("Clear", func(): _debug_log.clear())
+	btn_clear.tooltip_text = "Clear log"
+	header.add_child(btn_clear)
+	vb.add_child(header)
+
+	_debug_log = RichTextLabel.new()
+	_debug_log.bbcode_enabled = true
+	_debug_log.scroll_following = true
+	_debug_log.selection_enabled = true
+	_debug_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vb.add_child(_debug_log)
+
+
+func _on_debug_toggled(pressed: bool) -> void:
+	if _debug_panel:
+		_debug_panel.visible = pressed
+
+
+func _on_copy_log_pressed() -> void:
+	if _debug_log:
+		DisplayServer.clipboard_set(_debug_log.get_parsed_text())
+
+
+func _on_dump_state_pressed() -> void:
+	_dbg("── State Dump ──")
+	if _project == null:
+		_dbg("  project: null", "warn")
+	else:
+		var pname := _project.project_info.name if _project.project_info else "?"
+		_dbg("  project: \"%s\"  id:%s  topics:%d  docs:%d" % [
+				pname, _project.project_info.project_id if _project.project_info else "?",
+				_project.topics.size(), _project.documents.size()], "ok")
+		if _project.extensions:
+			_dbg("  extensions: %d types, %d statuses, %d priorities" % [
+					_project.extensions.topic_types.size(),
+					_project.extensions.topic_statuses.size(),
+					_project.extensions.priorities.size()])
+	if _selected_topic == null:
+		_dbg("  topic: none selected")
+	else:
+		_dbg("  topic: \"%s\" guid:%s [%s/%s]  comments:%d  vps:%d" % [
+				_selected_topic.title, _selected_topic.guid.left(8),
+				_selected_topic.topic_type, _selected_topic.topic_status,
+				_selected_topic.comments.size(), _selected_topic.viewpoints.size()])
+	if _selected_viewpoint == null:
+		_dbg("  viewpoint: none selected")
+	else:
+		var vis: BCFVisualizationInfo = _selected_viewpoint.visualization_info
+		var cam_name := "none"
+		if vis:
+			match vis.camera_type:
+				BCFVisualizationInfo.BCF_CAMERA_PERSPECTIVE: cam_name = "perspective"
+				BCFVisualizationInfo.BCF_CAMERA_ORTHOGONAL:  cam_name = "orthogonal"
+		var comp_n := 0
+		if vis and vis.components:
+			comp_n = vis.components.selection.size()
+			for c: BCFComponent in vis.components.selection:
+				_dbg("    ifc_guid: " + c.ifc_guid)
+		_dbg("  viewpoint: %s  cam:%s  components:%d" % [
+				_selected_viewpoint.guid.left(8), cam_name, comp_n])
+	_dbg("── End Dump ──")
+
+
+# level: "info" | "ok" | "warn" | "err"
+func _dbg(msg: String, level: String = "info") -> void:
+	if _debug_log == null:
+		return
+	var color := "#cccccc"
+	var prefix := "[INFO]"
+	match level:
+		"ok":   color = "#55dd88"; prefix = "[ OK ]"
+		"warn": color = "#ffcc44"; prefix = "[WARN]"
+		"err":  color = "#ff5555"; prefix = "[ERR ]"
+	var ts := Time.get_time_string_from_system()
+	var safe := msg.replace("[", "\\[")
+	_debug_log.append_text("[color=#555555]%s[/color] [color=%s]%s %s[/color]\n" % [ts, color, prefix, safe])
+
 
 func _get_minimum_size() -> Vector2:
 	return Vector2(260, 400)
