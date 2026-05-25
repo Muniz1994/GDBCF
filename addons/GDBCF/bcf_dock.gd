@@ -52,7 +52,12 @@ var _fld_comment_text: TextEdit
 var _btn_add_comment: Button
 
 # Viewpoints tab
-var _viewpoint_list: VBoxContainer
+var _selected_viewpoint: BCFViewpointRef
+var _vp_entries_box: VBoxContainer
+var _vp_detail_panel: PanelContainer
+var _vp_camera_opt: OptionButton
+var _vp_components_box: VBoxContainer
+var _btn_delete_vp: Button
 
 # ── Lifecycle ──────────────────────────────────────────────────────────────────
 
@@ -233,15 +238,98 @@ func _build_comments_tab() -> void:
 # ── Viewpoints tab ─────────────────────────────────────────────────────────────
 
 func _build_viewpoints_tab() -> void:
-	var scroll := ScrollContainer.new()
-	scroll.name = "Viewpoints"
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_tab_container.add_child(scroll)
+	var outer := VBoxContainer.new()
+	outer.name = "Viewpoints"
+	outer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_theme_constant_override("separation", 4)
+	_tab_container.add_child(outer)
 
-	_viewpoint_list = VBoxContainer.new()
-	_viewpoint_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_viewpoint_list.add_theme_constant_override("separation", 6)
-	scroll.add_child(_viewpoint_list)
+	# Toolbar
+	var vp_toolbar := HBoxContainer.new()
+	outer.add_child(vp_toolbar)
+
+	var btn_add_vp := _make_button("+ Add Viewpoint", _on_add_viewpoint_pressed)
+	btn_add_vp.tooltip_text = "Create a new empty viewpoint for this topic"
+	vp_toolbar.add_child(btn_add_vp)
+
+	_btn_delete_vp = _make_button("Delete", _on_delete_viewpoint_pressed)
+	_btn_delete_vp.tooltip_text = "Remove the selected viewpoint"
+	_btn_delete_vp.disabled = true
+	vp_toolbar.add_child(_btn_delete_vp)
+
+	# Viewpoint entry list
+	var list_scroll := ScrollContainer.new()
+	list_scroll.custom_minimum_size = Vector2(0, 90)
+	list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_child(list_scroll)
+
+	_vp_entries_box = VBoxContainer.new()
+	_vp_entries_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_vp_entries_box.add_theme_constant_override("separation", 2)
+	list_scroll.add_child(_vp_entries_box)
+
+	outer.add_child(HSeparator.new())
+
+	# ── Detail panel (hidden until a viewpoint is selected) ────────────────────
+	_vp_detail_panel = PanelContainer.new()
+	_vp_detail_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_vp_detail_panel.visible = false
+	outer.add_child(_vp_detail_panel)
+
+	var detail_vb := VBoxContainer.new()
+	detail_vb.add_theme_constant_override("separation", 6)
+	_vp_detail_panel.add_child(detail_vb)
+
+	# Camera row
+	var cam_hdr := Label.new()
+	cam_hdr.text = "Camera"
+	cam_hdr.add_theme_font_size_override("font_size", 11)
+	detail_vb.add_child(cam_hdr)
+
+	var cam_row := HBoxContainer.new()
+	detail_vb.add_child(cam_row)
+
+	_vp_camera_opt = OptionButton.new()
+	_vp_camera_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_vp_camera_opt.add_item("None",        BCFVisualizationInfo.BCF_CAMERA_NONE)
+	_vp_camera_opt.add_item("Perspective",  BCFVisualizationInfo.BCF_CAMERA_PERSPECTIVE)
+	_vp_camera_opt.add_item("Orthogonal",   BCFVisualizationInfo.BCF_CAMERA_ORTHOGONAL)
+	_vp_camera_opt.item_selected.connect(_on_vp_camera_type_changed)
+	cam_row.add_child(_vp_camera_opt)
+
+	var btn_capture := _make_button("Capture Editor Cam", _on_capture_camera_pressed)
+	btn_capture.tooltip_text = "Read the active 3D editor viewport camera into this viewpoint"
+	cam_row.add_child(btn_capture)
+
+	detail_vb.add_child(HSeparator.new())
+
+	# IFC Component selection
+	var comp_hdr := Label.new()
+	comp_hdr.text = "IFC Component Selection"
+	comp_hdr.add_theme_font_size_override("font_size", 11)
+	detail_vb.add_child(comp_hdr)
+
+	var comp_scroll := ScrollContainer.new()
+	comp_scroll.custom_minimum_size = Vector2(0, 70)
+	comp_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	detail_vb.add_child(comp_scroll)
+
+	_vp_components_box = VBoxContainer.new()
+	_vp_components_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_vp_components_box.add_theme_constant_override("separation", 2)
+	comp_scroll.add_child(_vp_components_box)
+
+	var comp_btns := HBoxContainer.new()
+	detail_vb.add_child(comp_btns)
+
+	var btn_add_sel := _make_button("Add Scene Selection", _on_add_scene_selection_pressed)
+	btn_add_sel.tooltip_text = "Add the IFC GUID of every selected scene node to this viewpoint's component selection"
+	btn_add_sel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	comp_btns.add_child(btn_add_sel)
+
+	var btn_clr_sel := _make_button("Clear", _on_clear_vp_selection_pressed)
+	btn_clr_sel.tooltip_text = "Remove all component selections from this viewpoint"
+	comp_btns.add_child(btn_clr_sel)
 
 # ── Helper widgets ─────────────────────────────────────────────────────────────
 
@@ -322,6 +410,7 @@ func _populate_extension_options() -> void:
 
 func _load_topic_into_form(topic: BCFTopic) -> void:
 	_selected_topic = topic
+	_selected_viewpoint = null
 	_set_details_enabled(true)
 
 	_fld_guid.text     = topic.guid
@@ -378,49 +467,103 @@ func _populate_comments(topic: BCFTopic) -> void:
 		_comment_list.add_child(panel)
 
 func _populate_viewpoints(topic: BCFTopic) -> void:
-	for child in _viewpoint_list.get_children():
+	for child in _vp_entries_box.get_children():
 		child.queue_free()
-
-	for vp: BCFViewpointRef in topic.viewpoints:
-		var hb := HBoxContainer.new()
-
-		var lbl := Label.new()
-		lbl.text = vp.viewpoint_filename if vp.viewpoint_filename else vp.guid
-		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		lbl.add_theme_font_size_override("font_size", 11)
-		hb.add_child(lbl)
-
-		var vis: BCFVisualizationInfo = vp.visualization_info
-		if vis:
-			var cam_lbl := Label.new()
-			match vis.camera_type:
-				BCFVisualizationInfo.BCF_CAMERA_PERSPECTIVE:
-					cam_lbl.text = "Perspective"
-					cam_lbl.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))
-				BCFVisualizationInfo.BCF_CAMERA_ORTHOGONAL:
-					cam_lbl.text = "Orthogonal"
-					cam_lbl.add_theme_color_override("font_color", Color(0.8, 1.0, 0.4))
-				_:
-					cam_lbl.text = "No camera"
-			cam_lbl.add_theme_font_size_override("font_size", 10)
-			hb.add_child(cam_lbl)
-
-			var comp_lbl := Label.new()
-			if vis.components:
-				var sel_count: int = vis.components.selection.size()
-				comp_lbl.text = "  %d selected" % sel_count
-				comp_lbl.add_theme_font_size_override("font_size", 10)
-				comp_lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
-				hb.add_child(comp_lbl)
-
-		_viewpoint_list.add_child(hb)
-		_viewpoint_list.add_child(HSeparator.new())
 
 	if topic.viewpoints.is_empty():
 		var lbl := Label.new()
 		lbl.text = "(no viewpoints)"
 		lbl.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
-		_viewpoint_list.add_child(lbl)
+		_vp_entries_box.add_child(lbl)
+		_vp_detail_panel.visible = false
+		_selected_viewpoint = null
+		_btn_delete_vp.disabled = true
+		return
+
+	for vp: BCFViewpointRef in topic.viewpoints:
+		var btn := Button.new()
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+
+		var label_text := vp.viewpoint_filename if vp.viewpoint_filename else vp.guid.left(8) + "…"
+		var vis: BCFVisualizationInfo = vp.visualization_info
+		if vis:
+			match vis.camera_type:
+				BCFVisualizationInfo.BCF_CAMERA_PERSPECTIVE:
+					label_text += "  [Persp]"
+				BCFVisualizationInfo.BCF_CAMERA_ORTHOGONAL:
+					label_text += "  [Ortho]"
+			if vis.components:
+				var n: int = vis.components.selection.size()
+				if n > 0:
+					label_text += "  %d IFC" % n
+		btn.text = label_text
+
+		if vp == _selected_viewpoint:
+			btn.add_theme_color_override("font_color", Color(0.3, 0.8, 1.0))
+
+		var captured_vp := vp  # capture for lambda
+		btn.pressed.connect(func(): _select_viewpoint(captured_vp))
+		_vp_entries_box.add_child(btn)
+
+
+func _select_viewpoint(vp: BCFViewpointRef) -> void:
+	_selected_viewpoint = vp
+	_btn_delete_vp.disabled = false
+	_vp_detail_panel.visible = true
+	_load_viewpoint_into_panel(vp)
+	# Refresh list so the highlight updates
+	if _selected_topic:
+		_populate_viewpoints(_selected_topic)
+
+
+func _load_viewpoint_into_panel(vp: BCFViewpointRef) -> void:
+	var vis: BCFVisualizationInfo = vp.visualization_info
+	var cam_type := BCFVisualizationInfo.BCF_CAMERA_NONE
+	if vis:
+		cam_type = vis.camera_type
+	# Select matching item by id
+	for i in _vp_camera_opt.item_count:
+		if _vp_camera_opt.get_item_id(i) == cam_type:
+			_vp_camera_opt.selected = i
+			break
+	_refresh_vp_components_list()
+
+
+func _refresh_vp_components_list() -> void:
+	for child in _vp_components_box.get_children():
+		child.queue_free()
+
+	if _selected_viewpoint == null:
+		return
+	var vis: BCFVisualizationInfo = _selected_viewpoint.visualization_info
+	if vis == null or vis.components == null or vis.components.selection.is_empty():
+		var lbl := Label.new()
+		lbl.text = "(none)"
+		lbl.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
+		lbl.add_theme_font_size_override("font_size", 10)
+		_vp_components_box.add_child(lbl)
+		return
+
+	for comp: BCFComponent in vis.components.selection:
+		var row := HBoxContainer.new()
+		var lbl := Label.new()
+		lbl.text = comp.ifc_guid
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.add_theme_font_size_override("font_size", 10)
+		row.add_child(lbl)
+		var captured_comp := comp
+		var btn_rm := Button.new()
+		btn_rm.text = "×"
+		btn_rm.tooltip_text = "Remove this component"
+		btn_rm.pressed.connect(func():
+			vis.components.selection.erase(captured_comp)
+			_dirty = true
+			_refresh_vp_components_list()
+			_populate_viewpoints(_selected_topic)
+		)
+		row.add_child(btn_rm)
+		_vp_components_box.add_child(row)
 
 # ── Toolbar callbacks ──────────────────────────────────────────────────────────
 
@@ -572,12 +715,159 @@ func _on_add_comment_pressed() -> void:
 	_dirty = true
 	_populate_comments(_selected_topic)
 
+# ── Viewpoint callbacks ───────────────────────────────────────────────────────
+
+func _on_add_viewpoint_pressed() -> void:
+	if _selected_topic == null:
+		_show_error("Select a topic first.")
+		return
+	var vp := BCFViewpointRef.new()
+	vp.guid = _manager.generate_guid()
+	vp.viewpoint_filename = vp.guid + ".bcfv"
+	var vis := BCFVisualizationInfo.new()
+	vis.guid = vp.guid
+	vis.camera_type = BCFVisualizationInfo.BCF_CAMERA_NONE
+	var comps := BCFComponents.new()
+	vis.components = comps
+	vp.visualization_info = vis
+	_selected_topic.viewpoints.append(vp)
+	_dirty = true
+	_populate_viewpoints(_selected_topic)
+	_select_viewpoint(vp)
+
+
+func _on_delete_viewpoint_pressed() -> void:
+	if _selected_viewpoint == null or _selected_topic == null:
+		return
+	_selected_topic.viewpoints.erase(_selected_viewpoint)
+	_selected_viewpoint = null
+	_btn_delete_vp.disabled = true
+	_vp_detail_panel.visible = false
+	_dirty = true
+	_populate_viewpoints(_selected_topic)
+
+
+func _on_vp_camera_type_changed(index: int) -> void:
+	if _selected_viewpoint == null:
+		return
+	var vis: BCFVisualizationInfo = _selected_viewpoint.visualization_info
+	if vis == null:
+		return
+	vis.camera_type = _vp_camera_opt.get_item_id(index)
+	_dirty = true
+	_populate_viewpoints(_selected_topic)
+
+
+func _on_capture_camera_pressed() -> void:
+	if _selected_viewpoint == null:
+		return
+	var subvp: SubViewport = EditorInterface.get_editor_viewport_3d(0)
+	if subvp == null:
+		_show_error("No 3D editor viewport found.")
+		return
+	var cam: Camera3D = subvp.get_camera_3d()
+	if cam == null:
+		_show_error("No active Camera3D in the 3D editor viewport.")
+		return
+
+	var vis: BCFVisualizationInfo = _selected_viewpoint.visualization_info
+	if vis == null:
+		vis = BCFVisualizationInfo.new()
+		vis.guid = _selected_viewpoint.guid
+		_selected_viewpoint.visualization_info = vis
+
+	var fwd := -cam.global_transform.basis.z
+	var up  :=  cam.global_transform.basis.y
+	var pos :=  cam.global_position
+	var aspect := (float(subvp.size.x) / float(subvp.size.y)) if subvp.size.y > 0 else 1.0
+
+	if cam.projection == Camera3D.PROJECTION_PERSPECTIVE:
+		vis.camera_type = BCFVisualizationInfo.BCF_CAMERA_PERSPECTIVE
+		if vis.perspective_camera == null:
+			vis.perspective_camera = BCFPerspectiveCamera.new()
+		vis.perspective_camera.view_point   = pos
+		vis.perspective_camera.direction    = fwd
+		vis.perspective_camera.up_vector    = up
+		vis.perspective_camera.fov          = cam.fov
+		vis.perspective_camera.aspect_ratio = aspect
+	else:
+		vis.camera_type = BCFVisualizationInfo.BCF_CAMERA_ORTHOGONAL
+		if vis.orthogonal_camera == null:
+			vis.orthogonal_camera = BCFOrthogonalCamera.new()
+		vis.orthogonal_camera.view_point          = pos
+		vis.orthogonal_camera.direction           = fwd
+		vis.orthogonal_camera.up_vector           = up
+		vis.orthogonal_camera.view_to_world_scale = cam.size
+		vis.orthogonal_camera.aspect_ratio        = aspect
+
+	_dirty = true
+	_populate_viewpoints(_selected_topic)
+	_load_viewpoint_into_panel(_selected_viewpoint)
+
+
+func _on_add_scene_selection_pressed() -> void:
+	if _selected_viewpoint == null:
+		return
+	var vis: BCFVisualizationInfo = _selected_viewpoint.visualization_info
+	if vis == null:
+		vis = BCFVisualizationInfo.new()
+		vis.guid = _selected_viewpoint.guid
+		_selected_viewpoint.visualization_info = vis
+	if vis.components == null:
+		vis.components = BCFComponents.new()
+
+	var nodes := EditorInterface.get_selection().get_selected_nodes()
+	var added := 0
+	for node: Node in nodes:
+		var ifc_guid_val: Variant = null
+		if node.has_method("get_ifc_guid"):
+			ifc_guid_val = node.get_ifc_guid()
+		elif "ifc_guid" in node:
+			ifc_guid_val = node.get("ifc_guid")
+		if ifc_guid_val == null:
+			continue
+		var guid_str := str(ifc_guid_val)
+		if guid_str.is_empty():
+			continue
+		# Skip duplicates
+		var skip := false
+		for existing: BCFComponent in vis.components.selection:
+			if existing.ifc_guid == guid_str:
+				skip = true
+				break
+		if skip:
+			continue
+		var comp := BCFComponent.new()
+		comp.ifc_guid = guid_str
+		comp.originating_system = "GDBCF Editor"
+		vis.components.selection.append(comp)
+		added += 1
+
+	if added > 0:
+		_dirty = true
+		_refresh_vp_components_list()
+		_populate_viewpoints(_selected_topic)
+
+
+func _on_clear_vp_selection_pressed() -> void:
+	if _selected_viewpoint == null:
+		return
+	var vis: BCFVisualizationInfo = _selected_viewpoint.visualization_info
+	if vis == null or vis.components == null:
+		return
+	vis.components.selection.clear()
+	_dirty = true
+	_refresh_vp_components_list()
+	_populate_viewpoints(_selected_topic)
+
+
 # ── GDBCFManager signal handlers ──────────────────────────────────────────────
 
 func _on_bcf_loaded(project: BCFProject) -> void:
 	_project = project
 	_dirty = false
 	_selected_topic = null
+	_selected_viewpoint = null
 	_btn_save.disabled = false
 	_populate_extension_options()
 	_populate_topics()
