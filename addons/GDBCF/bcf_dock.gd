@@ -767,9 +767,9 @@ func _on_add_viewpoint_pressed() -> void:
 	vis.guid = vp.guid
 	vis.camera_type = BCFVisualizationInfo.BCF_CAMERA_PERSPECTIVE
 	var default_cam := BCFPerspectiveCamera.new()
-	default_cam.view_point   = Vector3(0, 0, 0)
-	default_cam.direction    = Vector3(0, 0, -1)
-	default_cam.up_vector    = Vector3(0, 1, 0)
+	default_cam.view_point   = Vector3(0, 0, 0)   # IFC origin
+	default_cam.direction    = Vector3(0, 1, 0)   # IFC +Y = looking into scene
+	default_cam.up_vector    = Vector3(0, 0, 1)   # IFC +Z = up
 	default_cam.fov          = 60.0
 	default_cam.aspect_ratio = 1.0
 	vis.perspective_camera = default_cam
@@ -832,9 +832,10 @@ func _on_capture_camera_pressed() -> void:
 		vis.guid = _selected_viewpoint.guid
 		_selected_viewpoint.visualization_info = vis
 
-	var fwd := -cam.global_transform.basis.z
-	var up  :=  cam.global_transform.basis.y
-	var pos :=  cam.global_position
+	# Convert from Godot Y-up to IFC/BCF Z-up before storing
+	var fwd := _godot_to_ifc(-cam.global_transform.basis.z)
+	var up  := _godot_to_ifc( cam.global_transform.basis.y)
+	var pos := _godot_to_ifc( cam.global_position)
 	var aspect := (float(subvp.size.x) / float(subvp.size.y)) if subvp.size.y > 0 else 1.0
 
 	if cam.projection == Camera3D.PROJECTION_PERSPECTIVE:
@@ -858,7 +859,7 @@ func _on_capture_camera_pressed() -> void:
 
 	_dirty = true
 	var cam_type_name := "orthogonal" if cam.projection != Camera3D.PROJECTION_PERSPECTIVE else "perspective"
-	_dbg("Captured %s camera pos=%s fov=%.1f aspect=%.2f" % [cam_type_name, str(pos), cam.fov, aspect], "ok")
+	_dbg("Captured %s camera (IFC coords) pos=%s dir=%s fov=%.1f aspect=%.2f" % [cam_type_name, str(pos), str(fwd), cam.fov, aspect], "ok")
 	_populate_viewpoints(_selected_topic)
 	_load_viewpoint_into_panel(_selected_viewpoint)
 
@@ -1010,6 +1011,15 @@ func _on_error(message: String) -> void:
 
 # Convert a Godot virtual path (res:// / user://) to a real OS path so the
 # C++ BCF writer can open it with standard file I/O.
+# Convert a position or direction vector from Godot's Y-up coordinate system to
+# IFC/BCF's Z-up coordinate system.
+# Godot: X=right  Y=up      Z=toward viewer
+# IFC:   X=right  Y=into scene  Z=up
+# Mapping: IFC.x = G.x,  IFC.y = -G.z,  IFC.z = G.y
+func _godot_to_ifc(v: Vector3) -> Vector3:
+	return Vector3(v.x, -v.z, v.y)
+
+
 func _to_os_path(path: String) -> String:
 	if path.begins_with("res://") or path.begins_with("user://"):
 		var globalized := ProjectSettings.globalize_path(path)

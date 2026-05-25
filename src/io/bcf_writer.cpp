@@ -454,10 +454,10 @@ std::string BCFWriter::write_viewpoint(const Ref<BCFVisualizationInfo> &vis) {
             auto *fov = doc.NewElement("FieldOfView"); fov->SetText(cam->get_fov()); pc->InsertEndChild(fov);
             auto *ar  = doc.NewElement("AspectRatio"); ar->SetText(cam->get_aspect_ratio()); pc->InsertEndChild(ar);
         } else {
-            // Fallback identity perspective camera
+            // Fallback: IFC Z-up — direction = +Y (into scene), up = +Z
             add_vec3(doc, pc, "CameraViewPoint", Vector3(0, 0, 0));
-            add_vec3(doc, pc, "CameraDirection",  Vector3(0, 0, -1));
-            add_vec3(doc, pc, "CameraUpVector",   Vector3(0, 1, 0));
+            add_vec3(doc, pc, "CameraDirection",  Vector3(0, 1, 0));
+            add_vec3(doc, pc, "CameraUpVector",   Vector3(0, 0, 1));
             auto *fov = doc.NewElement("FieldOfView"); fov->SetText(60.0f); pc->InsertEndChild(fov);
             auto *ar  = doc.NewElement("AspectRatio"); ar->SetText(1.0f); pc->InsertEndChild(ar);
         }
@@ -472,20 +472,21 @@ std::string BCFWriter::write_viewpoint(const Ref<BCFVisualizationInfo> &vis) {
             auto *s = doc.NewElement("ViewToWorldScale"); s->SetText(cam->get_view_to_world_scale()); oc->InsertEndChild(s);
             auto *ar = doc.NewElement("AspectRatio"); ar->SetText(cam->get_aspect_ratio()); oc->InsertEndChild(ar);
         } else {
-            // Fallback identity orthogonal camera
+            // Fallback: IFC Z-up — direction = +Y (into scene), up = +Z
             add_vec3(doc, oc, "CameraViewPoint",  Vector3(0, 0, 0));
-            add_vec3(doc, oc, "CameraDirection",  Vector3(0, 0, -1));
-            add_vec3(doc, oc, "CameraUpVector",   Vector3(0, 1, 0));
+            add_vec3(doc, oc, "CameraDirection",  Vector3(0, 1, 0));
+            add_vec3(doc, oc, "CameraUpVector",   Vector3(0, 0, 1));
             auto *s = doc.NewElement("ViewToWorldScale"); s->SetText(100.0f); oc->InsertEndChild(s);
             auto *ar = doc.NewElement("AspectRatio"); ar->SetText(1.0f); oc->InsertEndChild(ar);
         }
         root->InsertEndChild(oc);
     } else {
         // BCF_CAMERA_NONE — write a default perspective camera to satisfy the required xs:choice
+        // IFC Z-up: direction = +Y (into scene), up = +Z
         auto *pc = doc.NewElement("PerspectiveCamera");
         add_vec3(doc, pc, "CameraViewPoint", Vector3(0, 0, 0));
-        add_vec3(doc, pc, "CameraDirection",  Vector3(0, 0, -1));
-        add_vec3(doc, pc, "CameraUpVector",   Vector3(0, 1, 0));
+        add_vec3(doc, pc, "CameraDirection",  Vector3(0, 1, 0));
+        add_vec3(doc, pc, "CameraUpVector",   Vector3(0, 0, 1));
         auto *fov = doc.NewElement("FieldOfView"); fov->SetText(60.0f); pc->InsertEndChild(fov);
         auto *ar  = doc.NewElement("AspectRatio"); ar->SetText(1.0f); pc->InsertEndChild(ar);
         root->InsertEndChild(pc);
