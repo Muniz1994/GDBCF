@@ -1,0 +1,73 @@
+#include "bcf_topic.h"
+#include "bcf_bim_snippet.h"
+using namespace godot;
+
+void BCFTopic::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("set_guid", "v"),                   &BCFTopic::set_guid);
+    ClassDB::bind_method(D_METHOD("get_guid"),                        &BCFTopic::get_guid);
+    ClassDB::bind_method(D_METHOD("set_server_assigned_id", "v"),     &BCFTopic::set_server_assigned_id);
+    ClassDB::bind_method(D_METHOD("get_server_assigned_id"),          &BCFTopic::get_server_assigned_id);
+    ClassDB::bind_method(D_METHOD("set_topic_type", "v"),             &BCFTopic::set_topic_type);
+    ClassDB::bind_method(D_METHOD("get_topic_type"),                  &BCFTopic::get_topic_type);
+    ClassDB::bind_method(D_METHOD("set_topic_status", "v"),           &BCFTopic::set_topic_status);
+    ClassDB::bind_method(D_METHOD("get_topic_status"),                &BCFTopic::get_topic_status);
+    ClassDB::bind_method(D_METHOD("set_title", "v"),                  &BCFTopic::set_title);
+    ClassDB::bind_method(D_METHOD("get_title"),                       &BCFTopic::get_title);
+    ClassDB::bind_method(D_METHOD("set_description", "v"),            &BCFTopic::set_description);
+    ClassDB::bind_method(D_METHOD("get_description"),                 &BCFTopic::get_description);
+    ClassDB::bind_method(D_METHOD("set_creation_date", "v"),          &BCFTopic::set_creation_date);
+    ClassDB::bind_method(D_METHOD("get_creation_date"),               &BCFTopic::get_creation_date);
+    ClassDB::bind_method(D_METHOD("set_creation_author", "v"),        &BCFTopic::set_creation_author);
+    ClassDB::bind_method(D_METHOD("get_creation_author"),             &BCFTopic::get_creation_author);
+    ClassDB::bind_method(D_METHOD("set_modified_date", "v"),          &BCFTopic::set_modified_date);
+    ClassDB::bind_method(D_METHOD("get_modified_date"),               &BCFTopic::get_modified_date);
+    ClassDB::bind_method(D_METHOD("set_modified_author", "v"),        &BCFTopic::set_modified_author);
+    ClassDB::bind_method(D_METHOD("get_modified_author"),             &BCFTopic::get_modified_author);
+    ClassDB::bind_method(D_METHOD("set_due_date", "v"),               &BCFTopic::set_due_date);
+    ClassDB::bind_method(D_METHOD("get_due_date"),                    &BCFTopic::get_due_date);
+    ClassDB::bind_method(D_METHOD("set_assigned_to", "v"),            &BCFTopic::set_assigned_to);
+    ClassDB::bind_method(D_METHOD("get_assigned_to"),                 &BCFTopic::get_assigned_to);
+    ClassDB::bind_method(D_METHOD("set_priority", "v"),               &BCFTopic::set_priority);
+    ClassDB::bind_method(D_METHOD("get_priority"),                    &BCFTopic::get_priority);
+    ClassDB::bind_method(D_METHOD("set_labels", "v"),                 &BCFTopic::set_labels);
+    ClassDB::bind_method(D_METHOD("get_labels"),                      &BCFTopic::get_labels);
+    ClassDB::bind_method(D_METHOD("set_stage", "v"),                  &BCFTopic::set_stage);
+    ClassDB::bind_method(D_METHOD("get_stage"),                       &BCFTopic::get_stage);
+    ClassDB::bind_method(D_METHOD("set_reference_links", "v"),        &BCFTopic::set_reference_links);
+    ClassDB::bind_method(D_METHOD("get_reference_links"),             &BCFTopic::get_reference_links);
+    ClassDB::bind_method(D_METHOD("set_bim_snippet", "v"),            &BCFTopic::set_bim_snippet);
+    ClassDB::bind_method(D_METHOD("get_bim_snippet"),                 &BCFTopic::get_bim_snippet);
+    ClassDB::bind_method(D_METHOD("set_document_references", "v"),    &BCFTopic::set_document_references);
+    ClassDB::bind_method(D_METHOD("get_document_references"),         &BCFTopic::get_document_references);
+    ClassDB::bind_method(D_METHOD("set_related_topics", "v"),         &BCFTopic::set_related_topics);
+    ClassDB::bind_method(D_METHOD("get_related_topics"),              &BCFTopic::get_related_topics);
+    ClassDB::bind_method(D_METHOD("set_header_files", "v"),           &BCFTopic::set_header_files);
+    ClassDB::bind_method(D_METHOD("get_header_files"),                &BCFTopic::get_header_files);
+    ClassDB::bind_method(D_METHOD("set_comments", "v"),               &BCFTopic::set_comments);
+    ClassDB::bind_method(D_METHOD("get_comments"),                    &BCFTopic::get_comments);
+    ClassDB::bind_method(D_METHOD("set_viewpoints", "v"),             &BCFTopic::set_viewpoints);
+    ClassDB::bind_method(D_METHOD("get_viewpoints"),                  &BCFTopic::get_viewpoints);
+
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "guid"),                                                                               "set_guid",                 "get_guid");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "server_assigned_id"),                                                                 "set_server_assigned_id",   "get_server_assigned_id");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "topic_type"),                                                                         "set_topic_type",           "get_topic_type");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "topic_status"),                                                                       "set_topic_status",         "get_topic_status");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "title"),                                                                              "set_title",                "get_title");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "description"),                                                                        "set_description",          "get_description");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "creation_date"),                                                                      "set_creation_date",        "get_creation_date");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "creation_author"),                                                                    "set_creation_author",      "get_creation_author");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "modified_date"),                                                                      "set_modified_date",        "get_modified_date");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "modified_author"),                                                                    "set_modified_author",      "get_modified_author");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "due_date"),                                                                           "set_due_date",             "get_due_date");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "assigned_to"),                                                                        "set_assigned_to",          "get_assigned_to");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "priority"),                                                                           "set_priority",             "get_priority");
+    ADD_PROPERTY(PropertyInfo(Variant::ARRAY,  "labels"),                                                                             "set_labels",               "get_labels");
+    ADD_PROPERTY(PropertyInfo(Variant::STRING, "stage"),                                                                              "set_stage",                "get_stage");
+    ADD_PROPERTY(PropertyInfo(Variant::ARRAY,  "reference_links"),                                                                    "set_reference_links",      "get_reference_links");
+    ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "bim_snippet", PROPERTY_HINT_RESOURCE_TYPE, "BCFBimSnippet"),                          "set_bim_snippet",          "get_bim_snippet");
+    ADD_PROPERTY(PropertyInfo(Variant::ARRAY,  "document_references"),                                                               "set_document_references",  "get_document_references");
+    ADD_PROPERTY(PropertyInfo(Variant::ARRAY,  "related_topics"),                                                                     "set_related_topics",       "get_related_topics");
+    ADD_PROPERTY(PropertyInfo(Variant::ARRAY,  "header_files"),                                                                       "set_header_files",         "get_header_files");
+    ADD_PROPERTY(PropertyInfo(Variant::ARRAY,  "comments"),                                                                           "set_comments",             "get_comments");
+    ADD_PROPERTY(PropertyInfo(Variant::ARRAY,  "viewpoints"),                                                                         "set_viewpoints",           "get_viewpoints");
+}
