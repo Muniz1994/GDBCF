@@ -570,7 +570,9 @@ func _refresh_vp_components_list() -> void:
 		btn_rm.text = "×"
 		btn_rm.tooltip_text = "Remove this component"
 		btn_rm.pressed.connect(func():
-			vis.components.selection.erase(captured_comp)
+			var _sel: Array = vis.components.selection
+			_sel.erase(captured_comp)
+			vis.components.selection = _sel
 			_dirty = true
 			_refresh_vp_components_list()
 			_populate_viewpoints(_selected_topic)
@@ -584,17 +586,19 @@ func _on_open_pressed() -> void:
 	var dlg := EditorFileDialog.new()
 	dlg.title = "Open BCF File"
 	dlg.file_mode = EditorFileDialog.FILE_MODE_OPEN_FILE
+	dlg.access = EditorFileDialog.ACCESS_FILESYSTEM
 	dlg.add_filter("*.bcf", "BCF-XML files")
 	dlg.file_selected.connect(_on_open_file_selected)
 	add_child(dlg)
 	dlg.popup_centered(Vector2i(800, 600))
 
 func _on_open_file_selected(path: String) -> void:
-	_current_path = path
-	_lbl_file.text = path.get_file()
-	_lbl_file.tooltip_text = path
-	_dbg("Opening: " + path)
-	_manager.load_bcf(path)
+	var os_path := _to_os_path(path)
+	_current_path = os_path
+	_lbl_file.text = os_path.get_file()
+	_lbl_file.tooltip_text = os_path
+	_dbg("Opening: " + os_path)
+	_manager.load_bcf(os_path)
 
 func _on_new_pressed() -> void:
 	var dlg := AcceptDialog.new()
@@ -633,7 +637,9 @@ func _on_save_pressed() -> void:
 	if _current_path.is_empty() or _project == null:
 		_on_save_as_pressed()
 		return
-	_manager.save_bcf(_project, _current_path)
+	var os_path := _to_os_path(_current_path)
+	_dbg("Saving to: " + os_path)
+	_manager.save_bcf(_project, os_path)
 
 func _on_save_as_pressed() -> void:
 	if _project == null:
@@ -641,14 +647,16 @@ func _on_save_as_pressed() -> void:
 	var dlg := EditorFileDialog.new()
 	dlg.title = "Save BCF File"
 	dlg.file_mode = EditorFileDialog.FILE_MODE_SAVE_FILE
+	dlg.access = EditorFileDialog.ACCESS_FILESYSTEM
 	dlg.add_filter("*.bcf", "BCF-XML files")
 	dlg.file_selected.connect(func(path: String):
-		_current_path = path
-		_lbl_file.text = path.get_file()
-		_lbl_file.tooltip_text = path
+		var os_path := _to_os_path(path)
+		_current_path = os_path
+		_lbl_file.text = os_path.get_file()
+		_lbl_file.tooltip_text = os_path
 		_btn_save.disabled = false
-		_dbg("Saving to: " + path)
-		_manager.save_bcf(_project, path)
+		_dbg("Saving to: " + os_path)
+		_manager.save_bcf(_project, os_path)
 	)
 	add_child(dlg)
 	dlg.popup_centered(Vector2i(800, 600))
@@ -671,8 +679,15 @@ func _on_add_topic_pressed() -> void:
 	var type: String   = _project.extensions.topic_types[0]   if _project.extensions.topic_types.size()   > 0 else "OTHER"
 	var status: String = _project.extensions.topic_statuses[0] if _project.extensions.topic_statuses.size() > 0 else "OPEN"
 
-	var topic: BCFTopic = _manager.create_topic(type, status, "New Topic", "")
-	_project.topics.append(topic)
+	var _author := OS.get_environment("USERNAME")
+	if _author.is_empty():
+		_author = OS.get_environment("USER")
+	if _author.is_empty():
+		_author = "editor"
+	var topic: BCFTopic = _manager.create_topic(type, status, "New Topic", _author)
+	var _topics := _project.topics
+	_topics.append(topic)
+	_project.topics = _topics
 	_dbg("Added topic \"%s\" [%s/%s]" % [topic.title, type, status], "ok")
 	_dirty = true
 	_populate_topics()
@@ -690,7 +705,9 @@ func _on_delete_topic_pressed() -> void:
 	var idx := _project.topics.find(_selected_topic)
 	if idx >= 0:
 		_dbg("Deleted topic \"%s\"" % _selected_topic.title, "warn")
-		_project.topics.remove_at(idx)
+		var _topics := _project.topics
+		_topics.remove_at(idx)
+		_project.topics = _topics
 		_selected_topic = null
 		_dirty = true
 		_populate_topics()
@@ -729,7 +746,9 @@ func _on_add_comment_pressed() -> void:
 	comment.date    = Time.get_datetime_string_from_system(true) + "Z"
 	comment.comment = text
 
-	_selected_topic.comments.append(comment)
+	var _comments := _selected_topic.comments
+	_comments.append(comment)
+	_selected_topic.comments = _comments
 	_fld_comment_text.text = ""
 	_dbg("Added comment to \"%s\" by %s" % [_selected_topic.title, comment.author], "ok")
 	_dirty = true
@@ -746,11 +765,20 @@ func _on_add_viewpoint_pressed() -> void:
 	vp.viewpoint_filename = vp.guid + ".bcfv"
 	var vis := BCFVisualizationInfo.new()
 	vis.guid = vp.guid
-	vis.camera_type = BCFVisualizationInfo.BCF_CAMERA_NONE
+	vis.camera_type = BCFVisualizationInfo.BCF_CAMERA_PERSPECTIVE
+	var default_cam := BCFPerspectiveCamera.new()
+	default_cam.view_point   = Vector3(0, 0, 0)
+	default_cam.direction    = Vector3(0, 0, -1)
+	default_cam.up_vector    = Vector3(0, 1, 0)
+	default_cam.fov          = 60.0
+	default_cam.aspect_ratio = 1.0
+	vis.perspective_camera = default_cam
 	var comps := BCFComponents.new()
 	vis.components = comps
 	vp.visualization_info = vis
-	_selected_topic.viewpoints.append(vp)
+	var _vps := _selected_topic.viewpoints
+	_vps.append(vp)
+	_selected_topic.viewpoints = _vps
 	_dbg("Added viewpoint %s to topic \"%s\"" % [vp.guid.left(8), _selected_topic.title], "ok")
 	_dirty = true
 	_populate_viewpoints(_selected_topic)
@@ -761,7 +789,9 @@ func _on_delete_viewpoint_pressed() -> void:
 	if _selected_viewpoint == null or _selected_topic == null:
 		return
 	_dbg("Deleted viewpoint %s" % _selected_viewpoint.guid.left(8), "warn")
-	_selected_topic.viewpoints.erase(_selected_viewpoint)
+	var _vps := _selected_topic.viewpoints
+	_vps.erase(_selected_viewpoint)
+	_selected_topic.viewpoints = _vps
 	_selected_viewpoint = null
 	_btn_delete_vp.disabled = true
 	_vp_detail_panel.visible = false
@@ -847,6 +877,7 @@ func _on_add_scene_selection_pressed() -> void:
 
 	var nodes := EditorInterface.get_selection().get_selected_nodes()
 	_dbg("Scene selection: %d node(s) selected" % nodes.size())
+	var sel: Array = vis.components.selection
 	var added := 0
 	var skipped_no_guid := 0
 	var skipped_duplicate := 0
@@ -857,7 +888,7 @@ func _on_add_scene_selection_pressed() -> void:
 			continue
 		# Skip duplicates
 		var skip := false
-		for existing: BCFComponent in vis.components.selection:
+		for existing: BCFComponent in sel:
 			if existing.ifc_guid == guid_str:
 				skip = true
 				break
@@ -867,9 +898,10 @@ func _on_add_scene_selection_pressed() -> void:
 		var comp := BCFComponent.new()
 		comp.ifc_guid = guid_str
 		comp.originating_system = "GDBCF Editor"
-		vis.components.selection.append(comp)
+		sel.append(comp)
 		added += 1
 
+	vis.components.selection = sel  # commit: COW requires re-assignment
 	_dbg("Scene selection result: +%d added, %d no-guid, %d duplicate" % [added, skipped_no_guid, skipped_duplicate],
 			"ok" if added > 0 else "warn")
 	if added > 0:
@@ -940,7 +972,9 @@ func _on_clear_vp_selection_pressed() -> void:
 	if vis == null or vis.components == null:
 		return
 	var n: int = vis.components.selection.size()
-	vis.components.selection.clear()
+	var _sel: Array = vis.components.selection
+	_sel.clear()
+	vis.components.selection = _sel
 	_dbg("Cleared %d components from viewpoint %s" % [n, _selected_viewpoint.guid.left(8)], "warn")
 	_dirty = true
 	_refresh_vp_components_list()
@@ -973,6 +1007,15 @@ func _on_error(message: String) -> void:
 	_show_error(message)
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
+
+# Convert a Godot virtual path (res:// / user://) to a real OS path so the
+# C++ BCF writer can open it with standard file I/O.
+func _to_os_path(path: String) -> String:
+	if path.begins_with("res://") or path.begins_with("user://"):
+		var globalized := ProjectSettings.globalize_path(path)
+		_dbg("Globalized path: %s → %s" % [path, globalized])
+		return globalized
+	return path
 
 func _show_error(message: String) -> void:
 	var dlg := AcceptDialog.new()

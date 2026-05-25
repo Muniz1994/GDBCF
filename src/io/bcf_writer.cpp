@@ -234,16 +234,8 @@ void BCFWriter::write_topic(const Ref<BCFTopic> &topic, BCFZip &zip) {
 
     add_text(doc, topic_el, "Title",          to_std(topic->get_title()));
     add_text(doc, topic_el, "Priority",       to_std(topic->get_priority()));
-    add_text(doc, topic_el, "CreationDate",   to_std(topic->get_creation_date()));
-    add_text(doc, topic_el, "CreationAuthor", to_std(topic->get_creation_author()));
-    add_text(doc, topic_el, "ModifiedDate",   to_std(topic->get_modified_date()));
-    add_text(doc, topic_el, "ModifiedAuthor", to_std(topic->get_modified_author()));
-    add_text(doc, topic_el, "DueDate",        to_std(topic->get_due_date()));
-    add_text(doc, topic_el, "AssignedTo",     to_std(topic->get_assigned_to()));
-    add_text(doc, topic_el, "Stage",          to_std(topic->get_stage()));
-    add_text(doc, topic_el, "Description",    to_std(topic->get_description()));
 
-    // Labels
+    // Labels — must appear before CreationDate per markup.xsd xs:sequence
     const Array &labels = topic->get_labels();
     if (labels.size() > 0) {
         auto *labels_el = doc.NewElement("Labels");
@@ -251,6 +243,20 @@ void BCFWriter::write_topic(const Ref<BCFTopic> &topic, BCFZip &zip) {
             add_text(doc, labels_el, "Label", to_std(String(labels[i])));
         topic_el->InsertEndChild(labels_el);
     }
+
+    add_text(doc, topic_el, "CreationDate",   to_std(topic->get_creation_date()));
+    // CreationAuthor is required (NonEmptyOrBlankString, minOccurs=1); guard against empty
+    {
+        std::string ca = to_std(topic->get_creation_author());
+        if (ca.empty()) ca = "editor";
+        add_text(doc, topic_el, "CreationAuthor", ca);
+    }
+    add_text(doc, topic_el, "ModifiedDate",   to_std(topic->get_modified_date()));
+    add_text(doc, topic_el, "ModifiedAuthor", to_std(topic->get_modified_author()));
+    add_text(doc, topic_el, "DueDate",        to_std(topic->get_due_date()));
+    add_text(doc, topic_el, "AssignedTo",     to_std(topic->get_assigned_to()));
+    add_text(doc, topic_el, "Stage",          to_std(topic->get_stage()));
+    add_text(doc, topic_el, "Description",    to_std(topic->get_description()));
 
     // BimSnippet
     Ref<BCFBimSnippet> snippet = topic->get_bim_snippet();
@@ -304,7 +310,12 @@ void BCFWriter::write_topic(const Ref<BCFTopic> &topic, BCFZip &zip) {
             auto *cel = doc.NewElement("Comment");
             cel->SetAttribute("Guid", to_std(c->get_guid()).c_str());
             add_text(doc, cel, "Date",           to_std(c->get_date()));
-            add_text(doc, cel, "Author",         to_std(c->get_author()));
+            // Author is required (NonEmptyOrBlankString, minOccurs=1); guard against empty
+            {
+                std::string ca = to_std(c->get_author());
+                if (ca.empty()) ca = "editor";
+                add_text(doc, cel, "Author", ca);
+            }
             add_text(doc, cel, "Comment",        to_std(c->get_comment()));
             if (!c->get_viewpoint_guid().is_empty()) {
                 auto *vp = doc.NewElement("Viewpoint");
@@ -430,30 +441,54 @@ std::string BCFWriter::write_viewpoint(const Ref<BCFVisualizationInfo> &vis) {
         root->InsertEndChild(comp_el);
     }
 
-    // Camera
+    // Camera — xs:choice in visinfo.xsd is required (no minOccurs="0").
+    // Always write a camera; fall back to a default perspective when none is set.
     int cam_type = vis->get_camera_type();
     if (cam_type == BCF_CAMERA_PERSPECTIVE) {
         Ref<BCFPerspectiveCamera> cam = vis->get_perspective_camera();
+        auto *pc = doc.NewElement("PerspectiveCamera");
         if (cam.is_valid()) {
-            auto *pc = doc.NewElement("PerspectiveCamera");
             add_vec3(doc, pc, "CameraViewPoint", cam->get_view_point());
             add_vec3(doc, pc, "CameraDirection",  cam->get_direction());
             add_vec3(doc, pc, "CameraUpVector",   cam->get_up_vector());
             auto *fov = doc.NewElement("FieldOfView"); fov->SetText(cam->get_fov()); pc->InsertEndChild(fov);
             auto *ar  = doc.NewElement("AspectRatio"); ar->SetText(cam->get_aspect_ratio()); pc->InsertEndChild(ar);
-            root->InsertEndChild(pc);
+        } else {
+            // Fallback identity perspective camera
+            add_vec3(doc, pc, "CameraViewPoint", Vector3(0, 0, 0));
+            add_vec3(doc, pc, "CameraDirection",  Vector3(0, 0, -1));
+            add_vec3(doc, pc, "CameraUpVector",   Vector3(0, 1, 0));
+            auto *fov = doc.NewElement("FieldOfView"); fov->SetText(60.0f); pc->InsertEndChild(fov);
+            auto *ar  = doc.NewElement("AspectRatio"); ar->SetText(1.0f); pc->InsertEndChild(ar);
         }
+        root->InsertEndChild(pc);
     } else if (cam_type == BCF_CAMERA_ORTHOGONAL) {
         Ref<BCFOrthogonalCamera> cam = vis->get_orthogonal_camera();
+        auto *oc = doc.NewElement("OrthogonalCamera");
         if (cam.is_valid()) {
-            auto *oc = doc.NewElement("OrthogonalCamera");
             add_vec3(doc, oc, "CameraViewPoint",  cam->get_view_point());
             add_vec3(doc, oc, "CameraDirection",  cam->get_direction());
             add_vec3(doc, oc, "CameraUpVector",   cam->get_up_vector());
             auto *s = doc.NewElement("ViewToWorldScale"); s->SetText(cam->get_view_to_world_scale()); oc->InsertEndChild(s);
             auto *ar = doc.NewElement("AspectRatio"); ar->SetText(cam->get_aspect_ratio()); oc->InsertEndChild(ar);
-            root->InsertEndChild(oc);
+        } else {
+            // Fallback identity orthogonal camera
+            add_vec3(doc, oc, "CameraViewPoint",  Vector3(0, 0, 0));
+            add_vec3(doc, oc, "CameraDirection",  Vector3(0, 0, -1));
+            add_vec3(doc, oc, "CameraUpVector",   Vector3(0, 1, 0));
+            auto *s = doc.NewElement("ViewToWorldScale"); s->SetText(100.0f); oc->InsertEndChild(s);
+            auto *ar = doc.NewElement("AspectRatio"); ar->SetText(1.0f); oc->InsertEndChild(ar);
         }
+        root->InsertEndChild(oc);
+    } else {
+        // BCF_CAMERA_NONE — write a default perspective camera to satisfy the required xs:choice
+        auto *pc = doc.NewElement("PerspectiveCamera");
+        add_vec3(doc, pc, "CameraViewPoint", Vector3(0, 0, 0));
+        add_vec3(doc, pc, "CameraDirection",  Vector3(0, 0, -1));
+        add_vec3(doc, pc, "CameraUpVector",   Vector3(0, 1, 0));
+        auto *fov = doc.NewElement("FieldOfView"); fov->SetText(60.0f); pc->InsertEndChild(fov);
+        auto *ar  = doc.NewElement("AspectRatio"); ar->SetText(1.0f); pc->InsertEndChild(ar);
+        root->InsertEndChild(pc);
     }
 
     // Lines
