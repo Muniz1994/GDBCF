@@ -42,18 +42,6 @@ jobs:
             target: template_release
             arch: x86_64
 
-          - name: macOS Debug
-            runner: macos-latest
-            platform: macos
-            target: template_debug
-            arch: universal
-
-          - name: macOS Release
-            runner: macos-latest
-            platform: macos
-            target: template_release
-            arch: universal
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
