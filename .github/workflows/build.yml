@@ -1,0 +1,145 @@
+name: Build GDExtension
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux Debug
+            runner: ubuntu-24.04
+            platform: linux
+            target: template_debug
+            arch: x86_64
+
+          - name: Linux Release
+            runner: ubuntu-24.04
+            platform: linux
+            target: template_release
+            arch: x86_64
+
+          - name: Windows Debug
+            runner: windows-2022
+            platform: windows
+            target: template_debug
+            arch: x86_64
+
+          - name: Windows Release
+            runner: windows-2022
+            platform: windows
+            target: template_release
+            arch: x86_64
+
+          - name: macOS Debug
+            runner: macos-latest
+            platform: macos
+            target: template_debug
+            arch: universal
+
+          - name: macOS Release
+            runner: macos-latest
+            platform: macos
+            target: template_release
+            arch: universal
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SCons
+        run: pip install scons
+
+      # ── Platform-specific setup ─────────────────────────────────────
+
+      - name: (Linux) Install build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential
+
+      # ── SCons cache ────────────────────────────────────────────────
+
+      - name: Cache SCons
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache
+          key: scons-${{ matrix.platform }}-${{ matrix.target }}-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            scons-${{ matrix.platform }}-${{ matrix.target }}-${{ matrix.arch }}-
+
+      # ── Build ──────────────────────────────────────────────────────
+
+      - name: Build GDBCF
+        shell: bash
+        run: |
+          scons platform=${{ matrix.platform }} target=${{ matrix.target }} arch=${{ matrix.arch }} -j4
+
+      # ── Upload artifact ────────────────────────────────────────────
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: gdbcf-${{ matrix.platform }}-${{ matrix.target }}-${{ matrix.arch }}
+          path: addons/GDBCF/bin/libgdbcf*
+          if-no-files-found: error
+
+  package:
+    name: Package All Platforms
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: gdbcf-*
+
+      - name: Collect binaries
+        run: |
+          mkdir -p package/addons/GDBCF/bin
+          cp addons/GDBCF/GDBCF.gdextension package/addons/GDBCF/
+          cp addons/GDBCF/plugin.cfg          package/addons/GDBCF/
+          cp addons/GDBCF/*.gd                package/addons/GDBCF/
+          for dir in artifacts/gdbcf-*/; do
+            cp -r "$dir"* package/addons/GDBCF/bin/ || true
+          done
+
+      - name: Commit binaries to repo
+        if: github.event_name != 'pull_request'
+        run: |
+          cp -r artifacts/gdbcf-*/. addons/GDBCF/bin/ 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f addons/GDBCF/bin/libgdbcf*
+          git diff --cached --quiet || git commit -m "ci: update prebuilt binaries [skip ci]"
+          git push
+
+      - name: Upload complete addon
+        uses: actions/upload-artifact@v4
+        with:
+          name: GDBCF-addon-all-platforms
+          path: package/
+          if-no-files-found: error
